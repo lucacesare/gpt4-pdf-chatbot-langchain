@@ -2,9 +2,10 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import type { Document } from 'langchain/document';
 import { OpenAIEmbeddings } from 'langchain/embeddings/openai';
 import { PineconeStore } from 'langchain/vectorstores/pinecone';
+import { QdrantVectorStore } from 'langchain/vectorstores/qdrant';
 import { makeChain } from '@/utils/makechain';
-import { pinecone } from '@/utils/pinecone-client';
-import { PINECONE_INDEX_NAME, PINECONE_NAME_SPACE } from '@/config/pinecone';
+import { qdrant } from '@/utils/qdrant-client';
+import { QDRANT_URL, QDRANT_KEY } from '@/config/pinecone';
 
 export default async function handler(
   req: NextApiRequest,
@@ -28,17 +29,18 @@ export default async function handler(
   const sanitizedQuestion = question.trim().replaceAll('\n', ' ');
 
   try {
-    const index = pinecone.Index(PINECONE_INDEX_NAME);
 
     /* create vectorstore*/
-    const vectorStore = await PineconeStore.fromExistingIndex(
-      new OpenAIEmbeddings({}),
+    const vectorStore = await QdrantVectorStore.fromExistingCollection(
+      new OpenAIEmbeddings({
+        modelName: "text-embedding-3-large"
+      }),
       {
-        pineconeIndex: index,
-        textKey: 'text',
-        namespace: PINECONE_NAME_SPACE, //namespace comes from your config folder
-      },
-    );
+        client: qdrant,
+        url: QDRANT_URL,
+        apiKey: QDRANT_KEY,
+        collectionName: 'test'
+    });
 
     // Use a callback to get intermediate sources from the middle of the chain
     let resolveWithDocuments: (value: Document[]) => void;

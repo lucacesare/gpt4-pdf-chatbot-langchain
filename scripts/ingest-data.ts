@@ -1,15 +1,23 @@
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { OpenAIEmbeddings } from 'langchain/embeddings/openai';
-import { PineconeStore } from 'langchain/vectorstores/pinecone';
-import { pinecone } from '@/utils/pinecone-client';
+import { QdrantVectorStore } from 'langchain/vectorstores/qdrant';
+import { qdrant } from '@/utils/qdrant-client';
 import { PDFLoader } from 'langchain/document_loaders/fs/pdf';
-import { PINECONE_INDEX_NAME, PINECONE_NAME_SPACE } from '@/config/pinecone';
+import { QDRANT_URL, QDRANT_KEY } from '@/config/qdrant';
 import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
 
 /* Name of directory to retrieve your files from 
    Make sure to add your PDF files inside the 'docs' folder
 */
 const filePath = 'docs';
+
+function batchReduce<T>(arr: T[], batchSize: number): T[][] {
+  return arr.reduce((batches, curr, i) => {
+      if (i % batchSize === 0) batches.push([]);
+      batches[batches.length - 1].push(arr[i]);
+      return batches;
+  }, [] as T[][]);
+};
 
 export const run = async () => {
   try {
@@ -24,7 +32,7 @@ export const run = async () => {
     /* Split text into chunks */
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
-      chunkOverlap: 200,
+      chunkOverlap: 300,
     });
 
     const docs = await textSplitter.splitDocuments(rawDocs);
@@ -32,15 +40,25 @@ export const run = async () => {
 
     console.log('creating vector store...');
     /*create and store the embeddings in the vectorStore*/
-    const embeddings = new OpenAIEmbeddings();
-    const index = pinecone.Index(PINECONE_INDEX_NAME); //change to your own index name
-
-    //embed the PDF documents
-    await PineconeStore.fromDocuments(docs, embeddings, {
-      pineconeIndex: index,
-      namespace: PINECONE_NAME_SPACE,
-      textKey: 'text',
+    const embeddings = new OpenAIEmbeddings({
+      modelName: "text-embedding-3-large"
     });
+    const url = QDRANT_URL; //change to your own index name
+    
+    batchReduce(docs, 500).forEach(async function(value){
+          //embed the PDF documents
+      await QdrantVectorStore.fromDocuments(
+      value, 
+      embeddings,
+      {
+        client: qdrant,
+        url: QDRANT_URL,
+        apiKey: QDRANT_KEY,
+        collectionName: 'test'
+      });
+    });
+    
+
   } catch (error) {
     console.log('error', error);
     throw new Error('Failed to ingest your data');
